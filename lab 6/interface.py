@@ -16,7 +16,7 @@ ERRORS = {
 
 
 class App:
-    def __init__(self, root):
+    def __init__(self, root, *, compact=False):
         self.root = root
         root.title('Лабораторная №6. Многогранники и преобразования в 3D')
         root.geometry('1250x870'); root.minsize(1080, 760)
@@ -31,47 +31,52 @@ class App:
         self.axes_visible = tk.BooleanVar(value=True)
         self.vertices_visible = tk.BooleanVar(value=True)
         self.projection_kind = tk.StringVar(value='axonometric')
-        bar = ttk.Frame(root, padding=8); bar.pack(fill='x')
+        bar = ttk.Frame(root, padding=(8, 5) if compact else 8); bar.pack(fill='x')
         ttk.Label(bar, text='Многогранник:').pack(side='left')
         self.shape = ttk.Combobox(bar, values=list(SOLIDS), state='readonly', width=22)
         self.shape.set('Гексаэдр (куб)'); self.shape.pack(side='left', padx=5)
         self.shape.bind('<<ComboboxSelected>>', lambda _: self.reset_model())
-        ttk.Button(bar, text='Сбросить фигуру', command=self.reset_model).pack(side='left')
+        if not compact:
+            ttk.Button(bar, text='Сбросить фигуру', command=self.reset_model).pack(side='left')
         ttk.Radiobutton(bar, text='Аксонометрия', variable=self.projection_kind, value='axonometric',
                         command=self.change_projection).pack(side='left', padx=(15, 5))
         ttk.Radiobutton(bar, text='Перспектива', variable=self.projection_kind, value='perspective',
                         command=self.change_projection).pack(side='left')
         ttk.Button(bar, text='Вписать в окно', command=self.fit_view).pack(side='right')
         body = ttk.Frame(root); body.pack(fill='both', expand=True)
-        controls = ttk.Notebook(body, width=350); controls.pack(side='left', fill='y', padx=(7, 4))
-        transform_tab = ttk.Frame(controls, padding=8)
-        view_tab = ttk.Frame(controls, padding=8)
-        controls.add(transform_tab, text='Преобразования'); controls.add(view_tab, text='Обзор / матрица')
+        self.controls = ttk.Notebook(body, width=310 if compact else 350)
+        self.controls.pack(side='left', fill='y', padx=(7, 4), pady=(0, 6) if compact else 0)
+        transform_tab = ttk.Frame(self.controls, padding=8)
+        view_tab = ttk.Frame(self.controls, padding=8)
+        self.controls.add(transform_tab, text='Правка' if compact else 'Преобразования')
+        self.controls.add(view_tab, text='Обзор' if compact else 'Обзор / матрица')
         group = self.group(transform_tab, 'Смещение')
         self.add_fields(group, [('dx', 'dx', 40), ('dy', 'dy', 0), ('dz', 'dz', 0)])
         ttk.Button(group, text='Сместить', command=lambda: self.transform('move')).pack(fill='x')
-        group = self.group(transform_tab, 'Вращение вокруг координатной оси')
+        group = self.group(transform_tab, 'Вращение вокруг X, Y или Z' if compact else 'Вращение вокруг координатной оси')
         row = self.add_fields(group, [('angle', 'Угол °', 30)])
         self.axis = ttk.Combobox(row, values=['X', 'Y', 'Z'], state='readonly', width=5)
         self.axis.set('Y'); self.axis.pack(side='left', padx=8)
-        ttk.Checkbutton(group, text='Ось проходит через центр фигуры', variable=self.center_rotation).pack(anchor='w')
-        ttk.Label(group, text='Без отметки — ось через начало координат.').pack(anchor='w')
+        ttk.Checkbutton(group, text='Ось через центр фигуры' if compact else 'Ось проходит через центр фигуры', variable=self.center_rotation).pack(anchor='w')
+        if not compact:
+            ttk.Label(group, text='Без отметки — ось через начало координат.').pack(anchor='w')
         ttk.Button(group, text='Повернуть', command=lambda: self.transform('rotate')).pack(fill='x')
         group = self.group(transform_tab, 'Масштабирование')
         self.add_fields(group, [('kx', 'kx', 1.2), ('ky', 'ky', 1.2), ('kz', 'kz', 1.2)])
         ttk.Checkbutton(group, text='Относительно своего центра', variable=self.center_scaling).pack(anchor='w')
         ttk.Button(group, text='Масштабировать', command=lambda: self.transform('scale')).pack(fill='x')
-        group = self.group(transform_tab, 'Отражение относительно плоскости')
+        group = self.group(transform_tab, 'Отражение' if compact else 'Отражение относительно плоскости')
         row = ttk.Frame(group); row.pack(fill='x')
         for plane in ['XY', 'XZ', 'YZ']:
-            ttk.Button(row, text=plane, width=9, command=lambda p=plane: self.reflect(p)).pack(side='left', padx=2)
-        group = self.group(transform_tab, 'Вращение вокруг произвольной прямой A → B')
+            ttk.Button(row, text=plane, width=5 if compact else 9, command=lambda p=plane: self.reflect(p)).pack(side='left', padx=2)
+        group = self.group(transform_tab, 'Вращение вокруг A → B' if compact else 'Вращение вокруг произвольной прямой A → B')
         self.add_fields(group, [('ax', 'Ax', 0), ('ay', 'Ay', 0), ('az', 'Az', 0)])
         self.add_fields(group, [('bx', 'Bx', 1), ('by', 'By', 1), ('bz', 'Bz', 1)])
         self.add_fields(group, [('line_angle', 'Угол °', 30)])
         ttk.Button(group, text='Повернуть вокруг A → B', command=lambda: self.transform('line')).pack(fill='x')
-        ttk.Label(transform_tab, text='Углы — в градусах, положительное направление — по правилу правой руки. '
-                  'Центр — среднее координат вершин.', wraplength=315).pack(anchor='w', pady=6)
+        if not compact:
+            ttk.Label(transform_tab, text='Углы — в градусах, положительное направление — по правилу правой руки. '
+                      'Центр — среднее координат вершин.', wraplength=315).pack(anchor='w', pady=6)
         group = self.group(view_tab, 'Параметры обзора')
         self.add_fields(group, [('yaw', 'Поворот Y °', self.view.yaw)], width=9)
         self.add_fields(group, [('pitch', 'Поворот X °', self.view.pitch)], width=9)
@@ -83,14 +88,18 @@ class App:
         ttk.Scale(view_tab, from_=0.2, to=3, variable=self.zoom, command=self.change_zoom).pack(fill='x')
         ttk.Checkbutton(view_tab, text='Оси координат', variable=self.axes_visible, command=self.draw).pack(anchor='w')
         ttk.Checkbutton(view_tab, text='Вершины и центр', variable=self.vertices_visible, command=self.draw).pack(anchor='w')
-        ttk.Label(view_tab, text='ЛКМ + движение по холсту — изменить обзор. '
-                  'Это не меняет координаты модели. Зелёная точка — центр, оранжевая линия — последняя произвольная ось.',
-                  wraplength=315).pack(anchor='w', pady=10)
-        ttk.Label(view_tab, text='Последняя матрица преобразования:').pack(anchor='w')
+        if compact:
+            ttk.Label(view_tab, text='Перетащите модель для поворота обзора.').pack(anchor='w', pady=(4, 8))
+        else:
+            ttk.Label(view_tab, text='ЛКМ + движение по холсту — изменить обзор. '
+                      'Это не меняет координаты модели. Зелёная точка — центр, оранжевая линия — последняя произвольная ось.',
+                      wraplength=315).pack(anchor='w', pady=10)
+        ttk.Label(view_tab, text='Матрица преобразования' if compact else 'Последняя матрица преобразования:').pack(anchor='w')
         self.matrix_text = tk.Text(view_tab, height=6, width=35, font=('Menlo', 9), state='disabled')
         self.matrix_text.pack(fill='x', pady=4)
-        ttk.Label(view_tab, text='[x y z 1] × M. Все геометрические преобразования и обе проекции — матрицы 4×4. '
-                  'При перспективе после проекции выполняется деление на w.', wraplength=315).pack(anchor='w', pady=6)
+        if not compact:
+            ttk.Label(view_tab, text='[x y z 1] × M. Все геометрические преобразования и обе проекции — матрицы 4×4. '
+                      'При перспективе после проекции выполняется деление на w.', wraplength=315).pack(anchor='w', pady=6)
         display = ttk.Frame(body); display.pack(side='right', fill='both', expand=True)
         self.info = ttk.Label(display, padding=6); self.info.pack(side='top', fill='x')
         self.status = ttk.Label(display, text='Выберите преобразование и задайте параметры.', wraplength=800, padding=8)

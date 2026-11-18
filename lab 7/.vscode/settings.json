@@ -1,0 +1,8 @@
+{
+    "python.defaultInterpreterPath": "python3",
+    "code-runner.executorMap": {
+        "python": "\"$pythonPath\" -B -u $fullFileName"
+    },
+    "code-runner.ignoreSelection": true,
+    "python-envs.defaultEnvManager": "ms-python.python:system"
+}
