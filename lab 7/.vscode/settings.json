@@ -1,7 +1,7 @@
 {
-    "python.defaultInterpreterPath": "python3",
+    "python.defaultInterpreterPath": "${workspaceFolder}/.venv",
     "code-runner.executorMap": {
-        "python": "\"$pythonPath\" -B -u $fullFileName"
+        "python": "\"$workspaceRoot/.venv/bin/python\" -B -u $fullFileName"
     },
     "code-runner.ignoreSelection": true,
     "python-envs.defaultEnvManager": "ms-python.python:system"

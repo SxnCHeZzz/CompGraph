@@ -2,7 +2,14 @@
 
 ## Запуск
 
-Сохраните папки `lab 6` и `lab 7` рядом. Откройте `lab 7` в VS Code и выберите Python с Tkinter и NumPy. Если NumPy ещё не установлен, выполните `python3 -m pip install -r requirements.txt` в окружении для лабораторной. Откройте `interface.py` и нажмите ▶.
+Сохраните папки `lab 6` и `lab 7` рядом. Для запуска на macOS через ▶ в VS Code откройте папку `lab 7` и один раз выполните в её терминале эти команды, используя Python с Tkinter.
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+```
+
+Откройте `interface.py` и нажмите ▶. Code Runner запускает файл через Python из `.venv`.
 
 ## Что переиспользовано из Lab 6
 
