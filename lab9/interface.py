@@ -5,7 +5,8 @@ from tkinter import colorchooser, filedialog, ttk
 
 import numpy as np
 
-from member2_raster import BACKGROUND, SceneView, model_matrix, render
+from member2_raster import BACKGROUND, model_matrix, render
+from member3_camera import OrbitView
 from member3_texture import PROJECT, Texture, load_surface, make_surface
 
 
@@ -26,7 +27,7 @@ class App:
         self.model_name = 'Шар'
         self.texture = Texture.checker()
         self.color = np.array([86, 152, 217])
-        self.view = SceneView()
+        self.view = OrbitView()
         self.view.fit(self.surface.mesh, 720, 560)
         self.photo = None
         self.draw_job = None
@@ -185,8 +186,7 @@ class App:
             return
         x, y = self.drag_position
         self.drag_position = event.x, event.y
-        self.view.yaw += (event.x - x) * 0.4
-        self.view.pitch += (event.y - y) * 0.4
+        self.view.drag(event.x - x, event.y - y)
         self.schedule()
 
     def end_drag(self, event):

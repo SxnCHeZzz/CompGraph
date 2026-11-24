@@ -15,7 +15,8 @@ sys.path.append(str(PROJECT / 'lab 7'))
 from lab6_base import Polyhedron, SOLIDS, make_solid, matrices
 from member1_obj import load_obj
 from member2_revolution import generate_revolution
-from member3_projection import SceneView, camera_points, clip_depth, project_camera, projected_segments
+from member3_camera import OrbitView
+from member3_projection import camera_points, clip_depth, project_camera, projected_segments
 
 from rendering import BACKGROUND, OrbitCamera, clip_polygon, face_visibility, orient_closed_mesh, render_scene
 
@@ -31,9 +32,9 @@ class App:
         self.mesh_title = 'Гексаэдр (куб)'
         self.radius = 100
         self.object_angle = 0
-        self.orbit = SceneView()
+        self.orbit = OrbitView()
         self.camera = OrbitCamera()
-        self.scene_view = SceneView()
+        self.scene_view = OrbitView()
         self.models = []
         self.model_names = []
         self.drag_position = None
@@ -96,14 +97,14 @@ class App:
         ttk.Checkbutton(panel, text=text, variable=variable,
                         command=self.schedule_draw).pack(anchor='w', pady=2)
 
-    def slider(self, panel, title, variable, start, end, step=1):
+    def slider(self, panel, title, variable, start, end, step=1, *, digits=0):
         tk.Scale(panel, label=title, variable=variable, from_=start, to=end,
-                 resolution=step, orient='horizontal', highlightthickness=0,
+                 resolution=step, digits=digits, orient='horizontal', highlightthickness=0,
                  command=self.schedule_draw).pack(fill='x', pady=2)
 
     def angles(self, panel):
-        self.slider(panel, 'Азимут, °', self.yaw, -180, 180, 0.1)
-        self.slider(panel, 'Наклон, °', self.pitch, -180, 180, 0.1)
+        self.slider(panel, 'Азимут, °', self.yaw, -180, 180, -1, digits=8)
+        self.slider(panel, 'Наклон, °', self.pitch, -180, 180, -1, digits=8)
 
     def build_faces_tab(self, panel):
         ttk.Label(panel, text='Проекция').pack(anchor='w')
@@ -290,13 +291,14 @@ class App:
             return
         x, y = self.drag_position
         self.drag_position = event.x, event.y
-        dx, dy = (event.x - x) * 0.4, (event.y - y) * 0.4
+        dx, dy = event.x - x, event.y - y
         if self.mode == 1:
-            self.scene_view.yaw += dx
-            self.scene_view.pitch += dy
+            self.scene_view.drag(dx, dy)
         else:
-            self.yaw.set((self.yaw.get() + dx + 180) % 360 - 180)
-            self.pitch.set((self.pitch.get() + dy + 180) % 360 - 180)
+            self.orbit.yaw, self.orbit.pitch = self.yaw.get(), self.pitch.get()
+            self.orbit.drag(dx, dy)
+            self.yaw.set(self.orbit.yaw)
+            self.pitch.set(self.orbit.pitch)
         self.schedule_draw()
 
     def reset_object_rotation(self):
@@ -332,7 +334,7 @@ class App:
             self.draw_faces(view, width, height)
         else:
             self.camera.target = view.target
-            self.camera.yaw, self.camera.pitch = view.yaw, view.pitch
+            self.camera.yaw, self.camera.pitch, self.camera.roll = view.yaw, view.pitch, view.roll
             self.camera.distance = self.radius * self.distance.get()
             self.camera.near, self.camera.far = 0.04 * self.radius, 30 * self.radius
             self.camera.fov = self.fov.get()
