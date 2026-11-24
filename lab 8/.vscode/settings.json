@@ -1,7 +1,8 @@
 {
-    "python.defaultInterpreterPath": "${workspaceFolder}/.venv",
+    "python.defaultInterpreterPath": "${workspaceFolder}/../.venv",
+    "python-envs.terminal.autoActivationType": "command",
     "code-runner.executorMap": {
-        "python": "\"$workspaceRoot/.venv/bin/python\" -B -u $fullFileName"
+        "python": "\"$workspaceRoot/../.venv/bin/python\" -B -u $fullFileName"
     },
     "code-runner.ignoreSelection": true
 }
