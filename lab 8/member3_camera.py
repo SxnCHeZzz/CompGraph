@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 import math
 
-from member2_transforms import rotation
+from member2_transforms import rotation, rotation_line
 from member3_projection import SceneView
 
 
@@ -17,8 +17,12 @@ class OrbitView(SceneView):
 
     def drag(self, dx, dy):
         """Поворачивает обзор по экранным осям, чтобы передняя сторона шла за мышью."""
-        basis = self.view_matrix()[:3, :3]
-        basis = basis @ rotation('Y', -0.4 * dx)[:3, :3] @ rotation('X', -0.4 * dy)[:3, :3]
+        length = math.hypot(dx, dy)
+        if not length:
+            return
+        # Ось перпендикулярна движению мыши в плоскости экрана.
+        turn = rotation_line((0, 0, 0), (dy, dx, 0), -0.4 * length)
+        basis = self.view_matrix()[:3, :3] @ turn[:3, :3]
 
         # Разложение матрицы поворота Y → X → Z для полей азимута и наклона.
         horizontal = math.hypot(basis[0, 2], basis[2, 2])

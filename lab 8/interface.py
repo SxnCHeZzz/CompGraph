@@ -18,15 +18,14 @@ from member2_revolution import generate_revolution
 from member3_camera import OrbitView
 from member3_projection import camera_points, clip_depth, project_camera, projected_segments
 
-from rendering import BACKGROUND, OrbitCamera, clip_polygon, face_visibility, orient_closed_mesh, render_scene
+from rendering import OrbitCamera, clip_polygon, face_visibility, orient_closed_mesh, render_scene
+from viewport import Viewport, view_buttons, workspace
 
 
 class App:
     def __init__(self, root):
         self.root = root
         root.title('Лабораторная №8. Видимость и камера')
-        root.geometry('1160x780')
-        root.minsize(940, 680)
 
         self.mesh = make_solid('cube')
         self.mesh_title = 'Гексаэдр (куб)'
@@ -37,13 +36,13 @@ class App:
         self.scene_view = OrbitView()
         self.models = []
         self.model_names = []
-        self.drag_position = None
         self.pending_draw = None
         self.image = None
 
         self.projection = tk.StringVar(value='Параллельная')
         self.cull_faces = tk.BooleanVar(value=True)
         self.cull_camera = tk.BooleanVar(value=True)
+        self.wire_camera = tk.BooleanVar(value=False)
         self.show_normals = tk.BooleanVar(value=True)
         self.spin_faces = tk.BooleanVar(value=False)
         self.spin_camera = tk.BooleanVar(value=False)
@@ -56,18 +55,16 @@ class App:
         self.fov = tk.DoubleVar(value=45)
         self.status = tk.StringVar()
 
-        toolbar = ttk.Frame(root, padding=(8, 5))
-        toolbar.pack(fill='x')
+        toolbar, body = workspace(root, 'Удаление невидимых граней')
+        ttk.Label(toolbar, text='Модель').pack(side='left', padx=(0, 6))
         self.shape = ttk.Combobox(toolbar, values=(*SOLIDS, 'Шар'), state='readonly', width=22)
         self.shape.set(self.mesh_title)
         self.shape.pack(side='left')
         self.shape.bind('<<ComboboxSelected>>', self.select_solid)
-        ttk.Button(toolbar, text='Открыть OBJ', command=self.open_obj).pack(side='left', padx=5)
-        ttk.Button(toolbar, text='Вписать в окно', command=self.fit_view).pack(side='right')
+        ttk.Button(toolbar, text='Открыть OBJ…', command=self.open_obj).pack(side='left', padx=6)
+        view_buttons(toolbar, self.fit_view, self.reset_view)
 
-        body = ttk.Frame(root, padding=(8, 0, 8, 6))
-        body.pack(fill='both', expand=True)
-        self.tabs = ttk.Notebook(body, width=305)
+        self.tabs = ttk.Notebook(body, width=310)
         self.tabs.pack(side='left', fill='y', padx=(0, 8))
         for title, build in [('Грани', self.build_faces_tab),
                              ('Z-буфер', self.build_depth_tab),
@@ -77,15 +74,10 @@ class App:
             build(panel)
         self.tabs.bind('<<NotebookTabChanged>>', self.schedule_draw)
 
-        display = ttk.Frame(body)
-        display.pack(fill='both', expand=True)
-        self.canvas = tk.Canvas(display, background='#%02x%02x%02x' % BACKGROUND, highlightthickness=0)
-        self.canvas.pack(fill='both', expand=True)
-        ttk.Label(display, textvariable=self.status, padding=(5, 4), wraplength=565).pack(fill='x')
-        self.canvas.bind('<Configure>', self.schedule_draw)
-        self.canvas.bind('<Button-1>', self.start_drag)
-        self.canvas.bind('<B1-Motion>', self.drag)
-        self.canvas.bind('<ButtonRelease-1>', self.end_drag)
+        self.viewport = Viewport(body, self.status, self.schedule_draw, self.rotate_view,
+                                 self.zoom_view, self.fit_view)
+        self.viewport.pack(fill='both', expand=True)
+        self.canvas = self.viewport.canvas
         self.reset_scene()
         root.after(40, self.animate)
 
@@ -155,6 +147,7 @@ class App:
         self.slider(panel, 'Дистанция, в радиусах модели', self.distance, 0.3, 12, 0.1)
         self.slider(panel, 'Поле зрения, °', self.fov, 20, 120)
         self.checkbutton(panel, 'Скрывать нелицевые грани', self.cull_camera)
+        self.checkbutton(panel, 'Каркас', self.wire_camera)
         self.checkbutton(panel, 'Автовращение камеры', self.spin_camera)
 
     @staticmethod
@@ -280,18 +273,21 @@ class App:
             self.distance.set(max(3.7, 1 + 1.15 / (half_fov * min(1, aspect))))
         self.schedule_draw()
 
-    def start_drag(self, event):
-        self.drag_position = event.x, event.y
+    def reset_view(self):
+        if self.mode == 1:
+            self.scene_view = OrbitView()
+        else:
+            self.orbit = OrbitView()
+            self.yaw.set(self.orbit.yaw)
+            self.pitch.set(self.orbit.pitch)
+        self.fit_view()
 
-    def end_drag(self, event):
-        self.drag_position = None
+    def zoom_view(self, factor):
+        view = self.scene_view if self.mode == 1 else self.orbit
+        view.zoom = max(0.2, min(5, view.zoom * factor))
+        self.schedule_draw()
 
-    def drag(self, event):
-        if self.drag_position is None:
-            return
-        x, y = self.drag_position
-        self.drag_position = event.x, event.y
-        dx, dy = event.x - x, event.y - y
+    def rotate_view(self, dx, dy):
         if self.mode == 1:
             self.scene_view.drag(dx, dy)
         else:
@@ -326,6 +322,7 @@ class App:
         self.canvas.delete('all')
         if self.mode == 1:
             self.draw_depth(width, height)
+            self.viewport.draw_axes(self.scene_view)
             return
         view = replace(self.orbit, yaw=self.yaw.get(), pitch=self.pitch.get())
         if self.mode == 0:
@@ -338,14 +335,16 @@ class App:
             self.camera.distance = self.radius * self.distance.get()
             self.camera.near, self.camera.far = 0.04 * self.radius, 30 * self.radius
             self.camera.fov = self.fov.get()
+            self.camera.zoom = view.zoom
             self.draw_camera(self.camera, width, height)
+            view = self.camera
+        self.viewport.draw_axes(view)
 
     def draw_depth(self, width, height):
         enabled = self.depth_test.get()
         frame = render_scene(self.models, self.scene_view, width, height,
                              depth_test=enabled, reverse=self.reverse_order.get())
-        self.image = tk.PhotoImage(master=self.root, data=frame.ppm(self.show_depth.get()), format='PPM')
-        self.canvas.create_image(0, 0, image=self.image, anchor='nw')
+        self.show_frame(frame, show_depth=self.show_depth.get())
         label = 'Z-буфер включён' if enabled else 'Последняя грань перекрывает предыдущие'
         self.status.set(f'{label}  ·  Объектов {len(self.models)}')
 
@@ -380,28 +379,21 @@ class App:
                     self.canvas.create_line(*screen[:, :2].ravel(), fill='#ca4949', width=2, arrow=tk.LAST)
         self.status.set(f'{self.mesh_title}  ·  Граней показано {len(visible)} из {len(self.mesh.faces)}')
 
-    def draw_camera(self, view, width, height):
-        length = self.radius * 1.25
-        axes = np.vstack([np.zeros(3), np.eye(3) * length])
-        for index, color in enumerate(('#c84e52', '#3f9561', '#4e81ca'), 1):
-            for _, _, screen in projected_segments(axes, [(0, index)], view, width, height):
-                self.canvas.create_line(*screen[:, :2].ravel(), fill=color, arrow=tk.LAST)
-                x, y = screen[1, :2]
-                if 0 <= x < width and 0 <= y < height:
-                    self.canvas.create_text(x + 9, y, text='XYZ'[index - 1], fill=color)
+    def show_frame(self, frame, *, show_depth=False):
+        self.image = tk.PhotoImage(master=self.root, data=frame.ppm(show_depth), format='PPM')
+        self.canvas.create_image(0, 0, image=self.image, anchor='nw')
 
-        vertices = self.mesh.coordinates()
+    def draw_camera(self, view, width, height):
+        mesh = self.mesh
+        vertices = mesh.coordinates()
         if self.cull_camera.get():
-            _, _, front = face_visibility(self.mesh, camera_points(vertices, view), view)
-            edges = set()
-            for face, facing in zip(self.mesh.faces, front):
-                if facing:
-                    indices = face.indices
-                    edges.update(tuple(sorted((a, b))) for a, b in zip(indices, indices[1:] + indices[:1]))
+            _, _, front = face_visibility(mesh, camera_points(vertices, view), view)
+            mesh = Polyhedron(mesh.vertices, [face for face, visible in zip(mesh.faces, front) if visible])
+        if self.wire_camera.get():
+            for _, _, screen in projected_segments(vertices, mesh.edges(), view, width, height):
+                self.canvas.create_line(*screen[:, :2].ravel(), fill='#254b71', width=2)
         else:
-            edges = self.mesh.edges()
-        for _, _, screen in projected_segments(vertices, edges, view, width, height):
-            self.canvas.create_line(*screen[:, :2].ravel(), fill='#254b71', width=2)
+            self.show_frame(render_scene([mesh], view, width, height))
 
         pos_text = ', '.join(f'{value:.1f}' for value in view.position)
         dir_text = ', '.join(f'{value:.2f}' for value in view.direction)

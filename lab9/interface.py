@@ -5,9 +5,10 @@ from tkinter import colorchooser, filedialog, ttk
 
 import numpy as np
 
-from member2_raster import BACKGROUND, model_matrix, render
+from member2_raster import model_matrix, render
 from member3_camera import OrbitView
 from member3_texture import PROJECT, Texture, load_surface, make_surface
+from viewport import Viewport, view_buttons, workspace
 
 
 SHAPES = {'Тетраэдр': 'tetrahedron', 'Куб': 'cube', 'Октаэдр': 'octahedron', 'Шар': 'sphere'}
@@ -20,8 +21,6 @@ class App:
     def __init__(self, root):
         self.root = root
         root.title('Лабораторная №9 — Освещение и текстурирование')
-        root.geometry('1100x700')
-        root.minsize(860, 625)
 
         self.surface = make_surface('sphere')
         self.model_name = 'Шар'
@@ -31,7 +30,6 @@ class App:
         self.view.fit(self.surface.mesh, 720, 560)
         self.photo = None
         self.draw_job = None
-        self.drag_position = None
 
         self.shape = tk.StringVar(value=self.model_name)
         self.mode = tk.StringVar(value=next(iter(MODES)))
@@ -43,22 +41,23 @@ class App:
         self.scale = self.variables((1, 1, 1))
         self.light = self.variables(DEFAULT_LIGHT)
 
-        body = ttk.Frame(root, padding=12)
-        body.pack(fill='both', expand=True)
-        controls = ttk.Frame(body, width=278)
-        controls.pack(side='left', fill='y', padx=(0, 12))
-        display = ttk.Frame(body)
-        display.pack(side='left', fill='both', expand=True)
+        toolbar, body = workspace(root, 'Освещение и текстурирование')
+        ttk.Label(toolbar, text='Модель').pack(side='left', padx=(0, 6))
+        shape = ttk.Combobox(toolbar, textvariable=self.shape, values=tuple(SHAPES),
+                             state='readonly', width=16)
+        shape.pack(side='left')
+        shape.bind('<<ComboboxSelected>>', self.select_shape)
+        ttk.Button(toolbar, text='Открыть OBJ…', command=self.open_obj).pack(side='left', padx=6)
+        view_buttons(toolbar, self.fit_view, self.reset_view)
 
+        controls = ttk.Frame(body, width=310)
+        controls.pack(side='left', fill='y', padx=(0, 8))
         self.build_controls(controls)
-        self.canvas = tk.Canvas(display, background='#%02x%02x%02x' % BACKGROUND, highlightthickness=0)
-        self.canvas.pack(fill='both', expand=True)
+        self.viewport = Viewport(body, self.status, self.schedule, self.rotate_view,
+                                 self.zoom_view, self.fit_view)
+        self.viewport.pack(fill='both', expand=True)
+        self.canvas = self.viewport.canvas
         self.image_item = self.canvas.create_image(0, 0, anchor='nw')
-        self.canvas.bind('<Configure>', self.schedule)
-        self.canvas.bind('<ButtonPress-1>', self.start_drag)
-        self.canvas.bind('<B1-Motion>', self.drag)
-        self.canvas.bind('<ButtonRelease-1>', self.end_drag)
-        ttk.Label(display, textvariable=self.status, padding=(0, 8), wraplength=510).pack(fill='x')
         self.schedule()
 
     @staticmethod
@@ -66,13 +65,12 @@ class App:
         return tuple(tk.StringVar(value=str(value)) for value in values)
 
     def build_controls(self, panel):
-        scene = ttk.LabelFrame(panel, text='Сцена', padding=8)
+        scene = ttk.LabelFrame(panel, text='Отображение', padding=8)
         scene.pack(fill='x', pady=(0, 9))
-        self.combo(scene, self.shape, SHAPES, self.select_shape)
-        ttk.Button(scene, text='Открыть OBJ…', command=self.open_obj).pack(fill='x', pady=(3, 7))
+        ttk.Label(scene, text='Режим').pack(anchor='w')
         self.combo(scene, self.mode, MODES, self.schedule)
+        ttk.Label(scene, text='Проекция').pack(anchor='w')
         self.combo(scene, self.projection, PROJECTIONS, self.schedule)
-        ttk.Label(scene, text='ЛКМ + движение — изменить обзор.').pack(anchor='w', pady=(4, 0))
 
         self.transform_controls = ttk.LabelFrame(panel, text='Преобразования объекта', padding=8)
         self.transform_controls.pack(fill='x', pady=(0, 9))
@@ -84,8 +82,12 @@ class App:
         ttk.Button(buttons, text='Применить', command=self.schedule).pack(side='left', expand=True, fill='x')
         ttk.Button(buttons, text='Сбросить', command=self.reset_transform).pack(side='left', expand=True, fill='x')
 
-        lighting = ttk.LabelFrame(panel, text='Освещение', padding=8)
-        lighting.pack(fill='x', pady=(0, 9))
+        mode_controls = ttk.Frame(panel)
+        mode_controls.pack(fill='x')
+        mode_controls.columnconfigure(0, weight=1)
+        lighting = ttk.LabelFrame(mode_controls, text='Освещение', padding=8)
+        lighting.grid(row=0, column=0, sticky='nsew')
+        self.lighting_controls = lighting
         self.fields(lighting, 'Источник', self.light, 20)
         color_row = ttk.Frame(lighting)
         color_row.pack(fill='x', pady=(4, 0))
@@ -93,12 +95,14 @@ class App:
         self.swatch.pack(side='left', padx=(0, 5))
         ttk.Button(color_row, text='Цвет объекта…', command=self.choose_color).pack(side='left', fill='x', expand=True)
 
-        texturing = ttk.LabelFrame(panel, text='Текстура', padding=8)
-        texturing.pack(fill='x')
+        texturing = ttk.LabelFrame(mode_controls, text='Текстура', padding=8)
+        texturing.grid(row=0, column=0, sticky='nsew')
+        self.texture_controls = texturing
+        self.active_mode_controls = lighting
+        texturing.grid_remove()
         ttk.Label(texturing, textvariable=self.texture_name, wraplength=228).pack(anchor='w')
         ttk.Button(texturing, text='Открыть изображение…', command=self.open_texture).pack(fill='x')
         ttk.Button(texturing, text='Шахматная сетка', command=self.reset_texture).pack(fill='x')
-        ttk.Label(panel, text='Enter применяет введённые значения.').pack(anchor='w', pady=(7, 0))
 
     @staticmethod
     def combo(parent, variable, options, callback):
@@ -178,19 +182,30 @@ class App:
             variable.set(str(value))
         self.schedule()
 
-    def start_drag(self, event):
-        self.drag_position = event.x, event.y
+    def transform_matrix(self):
+        return model_matrix(self.numbers(self.offset), self.numbers(self.angles),
+                            self.numbers(self.scale), self.surface.points.mean(axis=0))
 
-    def drag(self, event):
-        if self.drag_position is None:
+    def fit_view(self):
+        try:
+            mesh = self.surface.mesh.transformed(self.transform_matrix())
+        except ValueError:
+            self.status.set('Проверьте значения преобразований объекта.')
             return
-        x, y = self.drag_position
-        self.drag_position = event.x, event.y
-        self.view.drag(event.x - x, event.y - y)
+        self.view.fit(mesh, self.canvas.winfo_width(), self.canvas.winfo_height())
         self.schedule()
 
-    def end_drag(self, event):
-        self.drag_position = None
+    def reset_view(self):
+        self.view = OrbitView()
+        self.fit_view()
+
+    def rotate_view(self, dx, dy):
+        self.view.drag(dx, dy)
+        self.schedule()
+
+    def zoom_view(self, factor):
+        self.view.zoom = max(0.2, min(5, self.view.zoom * factor))
+        self.schedule()
 
     def schedule(self, event=None):
         if self.draw_job is None:
@@ -201,19 +216,25 @@ class App:
         width, height = self.canvas.winfo_width(), self.canvas.winfo_height()
         if min(width, height) < 2:
             return
+        mode = MODES[self.mode.get()]
+        controls = self.texture_controls if mode == 'texture' else self.lighting_controls
+        if controls is not self.active_mode_controls:
+            self.active_mode_controls.grid_remove()
+            controls.grid()
+            self.active_mode_controls = controls
         try:
-            matrix = model_matrix(self.numbers(self.offset), self.numbers(self.angles),
-                                  self.numbers(self.scale), self.surface.points.mean(axis=0))
-            light = np.array(self.numbers(self.light))
+            matrix = self.transform_matrix()
+            light = np.array(self.numbers(self.light)) if mode != 'texture' else None
         except ValueError:
             self.status.set('Введите числа от −10000 до 10000 и ненулевой масштаб.')
             return
 
         self.view.kind = PROJECTIONS[self.projection.get()]
         buffer = render(self.surface, matrix, self.view, width, height,
-                        MODES[self.mode.get()], light, self.color, self.texture)
+                        mode, light, self.color, self.texture)
         self.photo = tk.PhotoImage(master=self.root, data=buffer.ppm(), format='PPM')
         self.canvas.itemconfigure(self.image_item, image=self.photo)
+        self.viewport.draw_axes(self.view)
         mesh = self.surface.mesh
         self.status.set(f'{self.model_name}   ·   Вершин {len(mesh.vertices)}   ·   Граней {len(mesh.faces)}')
 
