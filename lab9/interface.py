@@ -30,7 +30,7 @@ class App:
         self.view.fit(self.surface.mesh, 720, 560)
         self.photo = None
         self.draw_job = None
-        self.drag_origin = None
+        self.drag_position = None
 
         self.shape = tk.StringVar(value=self.model_name)
         self.mode = tk.StringVar(value=next(iter(MODES)))
@@ -71,13 +71,13 @@ class App:
         ttk.Button(scene, text='Открыть OBJ…', command=self.open_obj).pack(fill='x', pady=(3, 7))
         self.combo(scene, self.mode, MODES, self.schedule)
         self.combo(scene, self.projection, PROJECTIONS, self.schedule)
+        ttk.Label(scene, text='ЛКМ + движение — изменить обзор.').pack(anchor='w', pady=(4, 0))
 
         self.transform_controls = ttk.LabelFrame(panel, text='Преобразования объекта', padding=8)
         self.transform_controls.pack(fill='x', pady=(0, 9))
         self.fields(self.transform_controls, 'Перенос', self.offset, 10)
         self.fields(self.transform_controls, 'Поворот, °', self.angles, 5)
         self.fields(self.transform_controls, 'Масштаб', self.scale, 0.1)
-        ttk.Label(self.transform_controls, text='Перетащите мышью, чтобы повернуть.').pack(anchor='w', pady=(5, 3))
         buttons = ttk.Frame(self.transform_controls)
         buttons.pack(fill='x')
         ttk.Button(buttons, text='Применить', command=self.schedule).pack(side='left', expand=True, fill='x')
@@ -178,20 +178,19 @@ class App:
         self.schedule()
 
     def start_drag(self, event):
-        try:
-            self.drag_origin = (event.x, event.y, self.numbers(self.angles))
-        except ValueError:
-            self.status.set('Исправьте углы поворота объекта.')
+        self.drag_position = event.x, event.y
 
     def drag(self, event):
-        if self.drag_origin is not None:
-            x, y, (angle_x, angle_y, _) = self.drag_origin
-            self.angles[0].set(f'{(angle_x + (event.y - y) * 0.6) % 360:.1f}')
-            self.angles[1].set(f'{(angle_y + (event.x - x) * 0.6) % 360:.1f}')
-            self.schedule()
+        if self.drag_position is None:
+            return
+        x, y = self.drag_position
+        self.drag_position = event.x, event.y
+        self.view.yaw += (event.x - x) * 0.4
+        self.view.pitch += (event.y - y) * 0.4
+        self.schedule()
 
     def end_drag(self, event):
-        self.drag_origin = None
+        self.drag_position = None
 
     def schedule(self, event=None):
         if self.draw_job is None:

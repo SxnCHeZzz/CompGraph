@@ -102,8 +102,8 @@ class App:
                  command=self.schedule_draw).pack(fill='x', pady=2)
 
     def angles(self, panel):
-        self.slider(panel, 'Азимут, °', self.yaw, -180, 180)
-        self.slider(panel, 'Высота, °', self.pitch, -89, 89)
+        self.slider(panel, 'Азимут, °', self.yaw, -180, 180, 0.1)
+        self.slider(panel, 'Наклон, °', self.pitch, -180, 180, 0.1)
 
     def build_faces_tab(self, panel):
         ttk.Label(panel, text='Проекция').pack(anchor='w')
@@ -290,13 +290,13 @@ class App:
             return
         x, y = self.drag_position
         self.drag_position = event.x, event.y
-        dx, dy = (event.x - x) * 0.45, (event.y - y) * 0.45
+        dx, dy = (event.x - x) * 0.4, (event.y - y) * 0.4
         if self.mode == 1:
             self.scene_view.yaw += dx
-            self.scene_view.pitch = float(np.clip(self.scene_view.pitch + dy, -89, 89))
+            self.scene_view.pitch += dy
         else:
             self.yaw.set((self.yaw.get() + dx + 180) % 360 - 180)
-            self.pitch.set(float(np.clip(self.pitch.get() + dy, -89, 89)))
+            self.pitch.set((self.pitch.get() + dy + 180) % 360 - 180)
         self.schedule_draw()
 
     def reset_object_rotation(self):
